@@ -153,7 +153,19 @@ cython_debug/
 *.bin
 *.safetensors
 *.onnx
+*.ckpt
+*.pth
+*.pt
+*.h5
+*.pb
+*.pkl
+*.paddle
+*.pdparams
+*.pdopt
+*.pdmodel
 models/
+.paddle/
+.paddlenlp/
 
 # Mapping files (may contain sensitive data)
 mappings/

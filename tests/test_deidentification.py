@@ -127,3 +127,7 @@ def test_config_options():
 
     result = deidentify(text, config=config)
     assert result is not None
+
+# python -m pytest tests/test_deidentification.py
+if __name__ == "__main__":
+    pytest.main()

@@ -7,8 +7,7 @@
 import re
 import random
 from typing import Tuple
-from presidio_analyzer import PatternRecognizer, Pattern
-from presidio_analyzer.entities import RecognizerResult
+from presidio_analyzer import PatternRecognizer, Pattern, RecognizerResult
 
 
 class AmountRecognizer(PatternRecognizer):

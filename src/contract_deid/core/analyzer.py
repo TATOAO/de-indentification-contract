@@ -6,8 +6,7 @@
 """
 
 from typing import List, Dict, Any
-from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
-from presidio_analyzer.entities import RecognizerResult
+from presidio_analyzer import AnalyzerEngine, RecognizerRegistry, RecognizerResult
 
 from contract_deid.recognizers.credit_code import CreditCodeRecognizer
 from contract_deid.recognizers.id_card import IdCardRecognizer
@@ -58,6 +57,13 @@ class DeidentificationEngine:
         # 创建注册表并添加自定义识别器
         registry = RecognizerRegistry()
         registry.load_predefined_recognizers()
+
+        # 移除与自定义识别器冲突的预定义识别器
+        # Presidio 的 PhoneRecognizer 与我们的自定义 PhoneRecognizer 冲突
+        try:
+            registry.remove_recognizer("PhoneRecognizer")
+        except ValueError:
+            pass  # 如果不存在则忽略
 
         # 注册自定义识别器（第一层）
         registry.add_recognizer(CreditCodeRecognizer())

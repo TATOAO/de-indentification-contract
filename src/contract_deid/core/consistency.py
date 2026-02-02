@@ -6,7 +6,7 @@
 """
 
 from typing import Dict, List
-from presidio_analyzer.entities import RecognizerResult
+from presidio_analyzer import RecognizerResult
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 

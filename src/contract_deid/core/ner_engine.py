@@ -1,55 +1,109 @@
 """
 第二层：NLP 实体识别（NER）
 
-使用 PaddleNLP 或 ModelScope 识别中文法律实体：
+使用适配器模式支持多种 NER 后端：
+- ModelScope（推荐）
+- PaddleNLP（向后兼容）
+- LLM（用于实体抽取）
+
+识别中文法律实体：
 - ORG（组织机构）：甲方、乙方、关联公司
 - PER（人名）：法人代表、授权签字人
 - LOC（地点）：项目地址、管辖法院地
 """
 
-from typing import List
-from presidio_analyzer.entities import RecognizerResult
+from typing import List, Optional, Literal, Union
+from presidio_analyzer import RecognizerResult
 
-try:
-    from paddlenlp import Taskflow
-except ImportError:
-    Taskflow = None
+from contract_deid.config import NERConfig
+from contract_deid.core.ner_adapters import (
+    BaseNERAdapter,
+    ModelScopeNERAdapter,
+    PaddleNLPAdapter,
+    LLMNERAdapter,
+)
 
 
 class NEREngine:
     """
-    NER 引擎：使用 PaddleNLP 进行中文实体识别
+    NER 引擎：使用适配器模式支持多种 NER 后端
+    
+    默认使用 ModelScope，但可以通过 adapter_type 参数切换后端。
     """
 
-    def __init__(self, model_name: str = "uie-base"):
+    # 支持的适配器类型
+    ADAPTER_TYPES = Literal["modelscope", "paddlenlp", "llm"]
+
+    def __init__(
+        self,
+        adapter_type: Optional[ADAPTER_TYPES] = None,
+        model_name: Optional[str] = None,
+        model_path: Optional[str] = None,
+        schema: Optional[List[str]] = None,
+        **kwargs
+    ):
         """
         初始化 NER 引擎
 
         Args:
-            model_name: PaddleNLP 模型名称，默认为 "uie-base"
+            adapter_type: 适配器类型，可选 "modelscope"（默认）、"paddlenlp"、"llm"
+                        如果为 None，将从环境变量 NER_ADAPTER_TYPE 读取
+            model_name: 模型名称（根据适配器类型不同而不同）
+                       如果为 None，将从环境变量 NER_MODEL_NAME 读取
+            model_path: 本地模型路径（如果指定则从本地加载）
+                       如果为 None，将从环境变量 NER_MODEL_PATH 读取
+            schema: 实体类型列表，如 ["组织机构", "人名", "地点"]
+                   如果为 None，将从环境变量 NER_SCHEMA 读取
+            **kwargs: 其他适配器特定参数
         """
-        self.model_name = model_name
-        self._model = None
+        # 从环境变量读取默认值
+        self.adapter_type = adapter_type or NERConfig.get_adapter_type()
+        self.model_name = model_name or NERConfig.get_model_name()
+        self.model_path = model_path or NERConfig.get_model_path()
+        self.schema = schema or NERConfig.get_schema() or ["组织机构", "人名", "地点"]
+        
+        # 创建适配器实例
+        self._adapter: BaseNERAdapter = self._create_adapter(**kwargs)
 
-    @property
-    def model(self):
-        """懒加载模型"""
-        if self._model is None:
-            if Taskflow is None:
-                raise ImportError(
-                    "PaddleNLP is not installed. Please install it with: pip install paddlenlp"
-                )
-            # 初始化 PaddleNLP 的 NER 任务流
-            self._model = Taskflow(
-                "information_extraction",
-                schema=["组织机构", "人名", "地点"],
-                model=self.model_name,
+    def _create_adapter(self, **kwargs) -> BaseNERAdapter:
+        """
+        根据 adapter_type 创建相应的适配器实例
+        
+        Args:
+            **kwargs: 适配器特定参数
+            
+        Returns:
+            BaseNERAdapter: 适配器实例
+        """
+        adapter_kwargs = {
+            "model_name": self.model_name,
+            "model_path": self.model_path,
+            "schema": self.schema,
+            **kwargs
+        }
+        
+        if self.adapter_type == "modelscope":
+            try:
+                return ModelScopeNERAdapter(**adapter_kwargs)
+            except ImportError:
+                print("Warning: ModelScope not available, falling back to PaddleNLP")
+                return PaddleNLPAdapter(**adapter_kwargs)
+        
+        elif self.adapter_type == "paddlenlp":
+            return PaddleNLPAdapter(**adapter_kwargs)
+        
+        elif self.adapter_type == "llm":
+            return LLMNERAdapter(**adapter_kwargs)
+        
+        else:
+            raise ValueError(
+                f"Unknown adapter_type: {self.adapter_type}. "
+                f"Supported types: {', '.join(['modelscope', 'paddlenlp', 'llm'])}"
             )
-        return self._model
 
     def analyze(self, text: str) -> List[RecognizerResult]:
         """
-        识别文本中的实体
+        识别文本中的实体（统一接口）
 
         Args:
             text: 待识别的文本
@@ -57,46 +111,14 @@ class NEREngine:
         Returns:
             List[RecognizerResult]: Presidio 格式的识别结果列表
         """
-        results = []
+        return self._adapter.analyze(text)
 
-        try:
-            # 调用 PaddleNLP 进行实体识别
-            ner_results = self.model(text)
-
-            # 将 PaddleNLP 结果转换为 Presidio 格式
-            for entity_type, entities in ner_results.items():
-                presidio_type = self._map_entity_type(entity_type)
-                if presidio_type:
-                    for entity in entities:
-                        if "text" in entity and "start" in entity and "end" in entity:
-                            result = RecognizerResult(
-                                entity_type=presidio_type,
-                                start=entity["start"],
-                                end=entity["end"],
-                                score=entity.get("probability", 0.9),
-                            )
-                            results.append(result)
-        except Exception as e:
-            # 如果 NER 失败，记录错误但不中断流程
-            print(f"Warning: NER analysis failed: {e}")
-            return []
-
-        return results
-
-    @staticmethod
-    def _map_entity_type(paddlenlp_type: str) -> str | None:
+    @property
+    def adapter(self) -> BaseNERAdapter:
         """
-        将 PaddleNLP 的实体类型映射到 Presidio 的实体类型
-
-        Args:
-            paddlenlp_type: PaddleNLP 的实体类型
-
+        获取当前使用的适配器实例
+        
         Returns:
-            Presidio 实体类型，如果无法映射则返回 None
+            BaseNERAdapter: 适配器实例
         """
-        mapping = {
-            "组织机构": "ORGANIZATION",
-            "人名": "PERSON",
-            "地点": "LOCATION",
-        }
-        return mapping.get(paddlenlp_type)
+        return self._adapter

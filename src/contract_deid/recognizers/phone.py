@@ -6,8 +6,7 @@
 
 import re
 from typing import List
-from presidio_analyzer import PatternRecognizer, Pattern
-from presidio_analyzer.entities import RecognizerResult
+from presidio_analyzer import PatternRecognizer, Pattern, RecognizerResult
 
 
 class PhoneRecognizer(PatternRecognizer):
