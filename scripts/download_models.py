@@ -7,7 +7,12 @@
 - PaddleNLP UIE 模型（可选，向后兼容）
 
 使用方法:
-    python scripts/download_models.py [--backend modelscope|paddlenlp]
+    python scripts/download_models.py [--backend modelscope|paddlenlp] [--model-name MODEL_NAME] [--cache-dir CACHE_DIR]
+
+模型配置优先级：
+1. 命令行参数（最高优先级）
+2. .env 文件中的环境变量
+3. 默认值
 
 模型将下载到 models/ 目录，该目录已在 .gitignore 中配置。
 """
@@ -21,21 +26,24 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-# 设置模型保存目录
-MODELS_DIR = project_root / "models"
+# 导入配置模块（会自动加载 .env 文件）
+from contract_deid.config import NERConfig, ModelConfig
+
+# 设置模型保存目录（优先使用环境变量配置）
+MODELS_DIR = ModelConfig.get_models_dir()
 MODELS_DIR.mkdir(exist_ok=True)
 
 
 def download_modelscope_model(
-    model_name: str = "damo/nlp_structbert_named-entity-recognition_chinese-base-ecommerce",
-    models_dir: Path = MODELS_DIR
+    model_name: str | None = None,
+    models_dir: Path | None = None
 ) -> bool:
     """
     下载 ModelScope NER 模型
     
     Args:
-        model_name: ModelScope 模型名称
-        models_dir: 模型保存目录
+        model_name: ModelScope 模型名称，如果为 None 则从环境变量读取
+        models_dir: 模型保存目录，如果为 None 则使用默认目录
         
     Returns:
         bool: 是否成功
@@ -43,14 +51,28 @@ def download_modelscope_model(
     try:
         from modelscope import snapshot_download
         
+        # 从环境变量读取默认值
+        if model_name is None:
+            model_name = NERConfig.get_model_name() or "damo/nlp_structbert_named-entity-recognition_chinese-base-ecommerce"
+        
+        if models_dir is None:
+            models_dir = MODELS_DIR
+        
         print(f"正在下载 ModelScope 模型: {model_name}")
         print(f"目标目录: {models_dir}")
         print()
         
-        # 设置 ModelScope 缓存目录
-        modelscope_cache = models_dir / "modelscope"
+        # 设置 ModelScope 缓存目录（优先使用环境变量配置）
+        cache_dir = NERConfig.get_modelscope_cache_dir()
+        if cache_dir:
+            modelscope_cache = Path(cache_dir)
+        else:
+            modelscope_cache = models_dir / "modelscope"
+        
         modelscope_cache.mkdir(parents=True, exist_ok=True)
         os.environ["MODELSCOPE_CACHE"] = str(modelscope_cache.resolve())
+        
+        print(f"缓存目录: {modelscope_cache}")
         
         # 下载模型
         print("正在下载模型，这可能需要几分钟时间...")
@@ -124,19 +146,32 @@ def fix_aistudio_sdk_import():
         return False
 
 
-def download_paddlenlp_model_simple(model_name: str = "uie-base", models_dir: Path = MODELS_DIR):
+def download_paddlenlp_model_simple(model_name: str | None = None, models_dir: Path | None = None):
     """
     使用简单方法下载 PaddleNLP UIE 模型
     通过直接运行代码触发自动下载
     
     Args:
-        model_name: 模型名称，默认为 "uie-base"
-        models_dir: 模型保存目录
+        model_name: 模型名称，如果为 None 则从环境变量读取
+        models_dir: 模型保存目录，如果为 None 则使用默认目录
     """
+    # 从环境变量读取默认值
+    if model_name is None:
+        model_name = NERConfig.get_model_name() or "uie-base"
+    
+    if models_dir is None:
+        models_dir = MODELS_DIR
+    
     # 确保使用绝对路径
     models_dir = models_dir.resolve()
+    
     # 设置环境变量 - PaddleNLP 会将模型下载到 PADDLE_HOME/taskflow/information_extraction/uie-base/
-    os.environ["PADDLE_HOME"] = str(models_dir)
+    # 优先使用环境变量配置的 PADDLE_HOME
+    paddle_home = NERConfig.get_paddle_home()
+    if paddle_home:
+        os.environ["PADDLE_HOME"] = paddle_home
+    else:
+        os.environ["PADDLE_HOME"] = str(models_dir)
     os.environ["PADDLE_MODELS_DIR"] = str(models_dir)
     
     print("方法: 通过运行简单代码触发模型下载")
@@ -227,19 +262,33 @@ except Exception as e:
             temp_script.unlink()
 
 
-def download_paddlenlp_model(model_name: str = "uie-base", models_dir: Path = MODELS_DIR):
+def download_paddlenlp_model(model_name: str | None = None, models_dir: Path | None = None):
     """
     下载 PaddleNLP UIE 模型
     
     Args:
-        model_name: 模型名称，默认为 "uie-base"
-        models_dir: 模型保存目录
+        model_name: 模型名称，如果为 None 则从环境变量读取
+        models_dir: 模型保存目录，如果为 None 则使用默认目录
     """
+    # 从环境变量读取默认值
+    if model_name is None:
+        model_name = NERConfig.get_model_name() or "uie-base"
+    
+    if models_dir is None:
+        models_dir = MODELS_DIR
+    
     # 确保使用绝对路径
     models_dir = models_dir.resolve()
+    
     # 设置 PaddleNLP 模型缓存目录
     # PaddleNLP 会将模型下载到 PADDLE_HOME/taskflow/information_extraction/uie-base/
-    os.environ["PADDLE_HOME"] = str(models_dir)
+    # 优先使用环境变量配置的 PADDLE_HOME
+    paddle_home = NERConfig.get_paddle_home()
+    if paddle_home:
+        os.environ["PADDLE_HOME"] = paddle_home
+        print(f"使用环境变量配置的 PADDLE_HOME: {paddle_home}")
+    else:
+        os.environ["PADDLE_HOME"] = str(models_dir)
     os.environ["PADDLE_MODELS_DIR"] = str(models_dir)
     
     print(f"正在下载 PaddleNLP 模型: {model_name}")
@@ -336,8 +385,20 @@ def main():
     parser.add_argument(
         "--backend",
         choices=["modelscope", "paddlenlp"],
-        default="modelscope",
-        help="选择模型后端（默认: modelscope）"
+        default=None,
+        help="选择模型后端（默认: 从环境变量 NER_ADAPTER_TYPE 读取，或使用 modelscope）"
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default=None,
+        help="模型名称（覆盖环境变量配置）"
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help="缓存目录（覆盖环境变量配置）"
     )
     args = parser.parse_args()
     
@@ -346,19 +407,41 @@ def main():
     print("=" * 60)
     print()
     
+    # 确定使用的后端（优先使用命令行参数，其次环境变量，最后默认值）
+    backend = args.backend or NERConfig.get_adapter_type() or "modelscope"
+    
+    # 确定模型名称（优先使用命令行参数，其次环境变量）
+    model_name = args.model_name or NERConfig.get_model_name()
+    
+    # 确定缓存目录（优先使用命令行参数，其次环境变量）
+    cache_dir = args.cache_dir
+    
+    print(f"后端: {backend}")
+    if model_name:
+        print(f"模型名称: {model_name}")
+    if cache_dir:
+        print(f"缓存目录: {cache_dir}")
+    print()
+    
     # 确保 models 目录存在
     MODELS_DIR.mkdir(exist_ok=True)
     
     success = False
     
-    if args.backend == "modelscope":
+    if backend == "modelscope":
         print("步骤 1/1: 下载 ModelScope NER 模型")
         print("-" * 60)
-        success = download_modelscope_model()
-    elif args.backend == "paddlenlp":
+        # 如果指定了缓存目录，设置环境变量
+        if cache_dir:
+            os.environ["MODEL_SCOPE_CACHE_DIR"] = cache_dir
+        success = download_modelscope_model(model_name=model_name)
+    elif backend == "paddlenlp":
         print("步骤 1/1: 下载 PaddleNLP UIE 模型")
         print("-" * 60)
-        success = download_paddlenlp_model()
+        # 如果指定了缓存目录，设置环境变量
+        if cache_dir:
+            os.environ["PADDLE_HOME"] = cache_dir
+        success = download_paddlenlp_model(model_name=model_name)
     
     if success:
         print()
@@ -375,5 +458,6 @@ def main():
         sys.exit(1)
 
 
+# python scripts/download_models.py 
 if __name__ == "__main__":
     main()

@@ -118,13 +118,21 @@ source .venv/bin/activate
 
 # 安装依赖
 uv pip install -e .
+
+# 如果使用 ModelScope，需要安装额外的依赖（包括 torch）
+uv pip install -e ".[modelscope]"
 ```
 
 ### 使用 pip
 
 ```bash
 pip install contract-deidentification
+
+# 如果使用 ModelScope，需要安装额外的依赖（包括 torch）
+pip install "contract-deidentification[modelscope]"
 ```
+
+**注意**：ModelScope 需要 `torch`，这是一个较大的依赖包。如果只使用 PaddleNLP 适配器，可以不安装 `torch`。
 
 ### 模型配置
 
@@ -156,14 +164,23 @@ NER_ADAPTER_TYPE=modelscope
 
 ```bash
 # 方法 1: 使用下载脚本下载 ModelScope 模型（推荐）
+# 脚本会自动读取 .env 文件中的配置（如 NER_MODEL_NAME、MODEL_SCOPE_CACHE_DIR）
 python scripts/download_models.py --backend modelscope
 
 # 方法 2: 下载 PaddleNLP 模型（向后兼容）
 python scripts/download_models.py --backend paddlenlp
 
-# 方法 3: 模型会在首次使用时自动下载到 ./models/ 目录
+# 方法 3: 使用命令行参数覆盖环境变量配置
+python scripts/download_models.py --backend modelscope --model-name your-model-name --cache-dir /path/to/cache
+
+# 方法 4: 模型会在首次使用时自动下载到 ./models/ 目录
 # 只需运行一次代码即可触发下载
 ```
+
+**配置优先级**：
+1. 命令行参数（最高优先级）
+2. `.env` 文件中的环境变量
+3. 默认值
 
 **模型位置**:
 - ModelScope: `./models/modelscope/`
